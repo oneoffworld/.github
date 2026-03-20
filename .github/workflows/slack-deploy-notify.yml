@@ -1,0 +1,41 @@
+name: Slack Deploy Notification
+
+on:
+  workflow_call:
+    secrets:
+      SLACK_BOT_TOKEN:
+        required: true
+
+jobs:
+  deploy-notify:
+    if: >-
+      github.event.pull_request.merged == true &&
+      (github.event.pull_request.base.ref == github.event.repository.default_branch ||
+       (github.repository == 'oneoffworld/oneoff-api' && github.event.pull_request.base.ref == 'staging'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Slack
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          REPO: ${{ github.repository }}
+        run: |
+          case "$PR_AUTHOR" in
+            adam-oneoff) SLACK_USER="U0AFK0X90ET" ;;
+            bkoc)        SLACK_USER="U099WFQSEG5" ;;
+            alexhatzo)   SLACK_USER="U0AFTQS6RGF" ;;
+            *)           echo "⚠️ No Slack mapping for $PR_AUTHOR — skipping DM"; exit 0 ;;
+          esac
+          if [ "$REPO" = "oneoffworld/oneoff-api" ] && [ "${{ github.event.pull_request.base.ref }}" = "staging" ]; then
+            TEXT="🚀 Deploying \`${REPO}\` to staging"
+          else
+            TEXT="🚀 Deploying \`${REPO}\`"
+          fi
+          PAYLOAD=$(jq -n \
+            --arg channel "$SLACK_USER" \
+            --arg text "$TEXT" \
+            '{channel: $channel, text: $text, blocks: [{type: "section", text: {type: "mrkdwn", text: $text}}]}')
+          curl -s -X POST "https://slack.com/api/chat.postMessage" \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H 'Content-type: application/json; charset=utf-8' \
+            -d "$PAYLOAD"
