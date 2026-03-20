@@ -18,11 +18,12 @@ jobs:
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           REPO: ${{ github.repository }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           if [ "$REPO" = "oneoffworld/oneoff-api" ] && [ "${{ github.event.pull_request.base.ref }}" = "staging" ]; then
-            TEXT="🚀 Deploying \`${REPO}\` to staging"
+            TEXT="🚀 ${PR_AUTHOR} deploying \`${REPO}\` to staging"
           else
-            TEXT="🚀 Deploying \`${REPO}\`"
+            TEXT="🚀 ${PR_AUTHOR} deploying \`${REPO}\` to prod"
           fi
           PAYLOAD=$(jq -n \
             --arg channel "C0ALVSHHAGY" \
