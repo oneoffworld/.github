@@ -36,7 +36,6 @@ jobs:
       - name: Notify Slack
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL: C0ALVSHHAGY
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_URL: ${{ github.event.pull_request.html_url }}
@@ -56,16 +55,17 @@ jobs:
             *)         EMOJI="⚠️"; STATUS="$BUGBOT_CONCLUSION" ;;
           esac
           case "$PR_AUTHOR" in
-            adam-oneoff) SLACK_MENTION="<@U0AFK0X90ET>" ;;
-            bkoc)        SLACK_MENTION="<@U099WFQSEG5>" ;;
-            alexhatzo)   SLACK_MENTION="<@U0AFTQS6RGF>" ;;
-            *)           SLACK_MENTION="$PR_AUTHOR" ;;
+            adam-oneoff) SLACK_USER="U0AFK0X90ET" ;;
+            bkoc)        SLACK_USER="U099WFQSEG5" ;;
+            alexhatzo)   SLACK_USER="U0AFTQS6RGF" ;;
+            *)           echo "⚠️ No Slack mapping for $PR_AUTHOR — skipping DM"; exit 0 ;;
           esac
+          SLACK_MENTION="<@${SLACK_USER}>"
           TEXT="${EMOJI} Cursor Bugbot ${STATUS} on PR #${PR_NUMBER} → \`${PR_BASE}\`"
           MRKDWN=$(printf '%s *Cursor Bugbot %s*\n*Repo:* `%s`\n*PR:* <%s|#%s — %s>\n*Branch:* `%s` → `%s`\n*Author:* %s' \
             "$EMOJI" "$STATUS" "$REPO" "$PR_URL" "$PR_NUMBER" "$PR_TITLE" "$PR_HEAD" "$PR_BASE" "$SLACK_MENTION")
           PAYLOAD=$(jq -n \
-            --arg channel "$SLACK_CHANNEL" \
+            --arg channel "$SLACK_USER" \
             --arg text "$TEXT" \
             --arg mrkdwn "$MRKDWN" \
             '{channel: $channel, text: $text, blocks: [{type: "section", text: {type: "mrkdwn", text: $mrkdwn}}]}')
