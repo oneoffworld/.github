@@ -1,0 +1,70 @@
+name: Slack PR Check Notification
+
+on:
+  workflow_call:
+    secrets:
+      SLACK_DEPLOYMENTS_WEBHOOK_URL:
+        required: true
+
+concurrency:
+  group: slack-notify-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Cursor Bugbot
+        id: bugbot
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          running-workflow-name: Slack PR Check Notification / notify
+          check-regexp: 'Cursor Bugbot'
+          allowed-conclusions: success,neutral,skipped,failure,timed_out,cancelled
+
+      - name: Get Bugbot conclusion
+        id: conclusion
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CONCLUSION=$(gh api "repos/${{ github.repository }}/commits/${{ github.event.pull_request.head.sha }}/check-runs" \
+            --jq '[.check_runs[] | select(.name | test("Cursor Bugbot")) | .conclusion] | last // "unknown"')
+          echo "bugbot=${CONCLUSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_DEPLOYMENTS_WEBHOOK_URL }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD: ${{ github.head_ref }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          REPO: ${{ github.repository }}
+          BUGBOT_CONCLUSION: ${{ steps.conclusion.outputs.bugbot }}
+        run: |
+          case "$BUGBOT_CONCLUSION" in
+            success)   EMOJI="✅"; STATUS="passed" ;;
+            failure)   EMOJI="❌"; STATUS="failed" ;;
+            timed_out) EMOJI="⏰"; STATUS="timed out" ;;
+            cancelled) EMOJI="🚫"; STATUS="cancelled" ;;
+            neutral)   EMOJI="➖"; STATUS="neutral" ;;
+            skipped)   EMOJI="⏭️"; STATUS="skipped" ;;
+            *)         EMOJI="⚠️"; STATUS="$BUGBOT_CONCLUSION" ;;
+          esac
+          case "$PR_AUTHOR" in
+            adam-oneoff) SLACK_MENTION="<@U0AFK0X90ET>" ;;
+            bkoc)        SLACK_MENTION="<@U099WFQSEG5>" ;;
+            alexhatzo)   SLACK_MENTION="<@U0AFTQS6RGF>" ;;
+            *)           SLACK_MENTION="$PR_AUTHOR" ;;
+          esac
+          TEXT="${EMOJI} Cursor Bugbot ${STATUS} on PR #${PR_NUMBER} → \`${PR_BASE}\`"
+          MRKDWN=$(printf '%s *Cursor Bugbot %s*\n*Repo:* `%s`\n*PR:* <%s|#%s — %s>\n*Branch:* `%s` → `%s`\n*Author:* %s' \
+            "$EMOJI" "$STATUS" "$REPO" "$PR_URL" "$PR_NUMBER" "$PR_TITLE" "$PR_HEAD" "$PR_BASE" "$SLACK_MENTION")
+          PAYLOAD=$(jq -n --arg text "$TEXT" --arg mrkdwn "$MRKDWN" \
+            '{text: $text, blocks: [{type: "section", text: {type: "mrkdwn", text: $mrkdwn}}]}')
+          curl -s -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-type: application/json' \
+            -d "$PAYLOAD"
