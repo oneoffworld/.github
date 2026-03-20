@@ -3,7 +3,7 @@ name: Slack PR Check Notification
 on:
   workflow_call:
     secrets:
-      SLACK_DEPLOYMENTS_WEBHOOK_URL:
+      SLACK_BOT_TOKEN:
         required: true
 
 concurrency:
@@ -35,7 +35,8 @@ jobs:
 
       - name: Notify Slack
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_DEPLOYMENTS_WEBHOOK_URL }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL: C0ALVSHHAGY
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_URL: ${{ github.event.pull_request.html_url }}
@@ -63,8 +64,12 @@ jobs:
           TEXT="${EMOJI} Cursor Bugbot ${STATUS} on PR #${PR_NUMBER} → \`${PR_BASE}\`"
           MRKDWN=$(printf '%s *Cursor Bugbot %s*\n*Repo:* `%s`\n*PR:* <%s|#%s — %s>\n*Branch:* `%s` → `%s`\n*Author:* %s' \
             "$EMOJI" "$STATUS" "$REPO" "$PR_URL" "$PR_NUMBER" "$PR_TITLE" "$PR_HEAD" "$PR_BASE" "$SLACK_MENTION")
-          PAYLOAD=$(jq -n --arg text "$TEXT" --arg mrkdwn "$MRKDWN" \
-            '{text: $text, blocks: [{type: "section", text: {type: "mrkdwn", text: $mrkdwn}}]}')
-          curl -s -X POST "$SLACK_WEBHOOK_URL" \
-            -H 'Content-type: application/json' \
+          PAYLOAD=$(jq -n \
+            --arg channel "$SLACK_CHANNEL" \
+            --arg text "$TEXT" \
+            --arg mrkdwn "$MRKDWN" \
+            '{channel: $channel, text: $text, blocks: [{type: "section", text: {type: "mrkdwn", text: $mrkdwn}}]}')
+          curl -s -X POST "https://slack.com/api/chat.postMessage" \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H 'Content-type: application/json; charset=utf-8' \
             -d "$PAYLOAD"
