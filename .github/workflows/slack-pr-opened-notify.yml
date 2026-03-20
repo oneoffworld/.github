@@ -1,0 +1,34 @@
+name: Slack PR Opened Notification
+
+on:
+  workflow_call:
+    secrets:
+      SLACK_BOT_TOKEN:
+        required: true
+
+jobs:
+  pr-opened-notify:
+    if: github.event.action == 'opened'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Slack
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+        run: |
+          TEXT="📬 ${PR_AUTHOR} opened PR #${PR_NUMBER} on \`${REPO}\` → \`${PR_BASE}\`"
+          MRKDWN=$(printf '%s\n<%s|#%s — %s>' "$TEXT" "$PR_URL" "$PR_NUMBER" "$PR_TITLE")
+          PAYLOAD=$(jq -n \
+            --arg channel "C0ALVSHHAGY" \
+            --arg text "$TEXT" \
+            --arg mrkdwn "$MRKDWN" \
+            '{channel: $channel, text: $text, blocks: [{type: "section", text: {type: "mrkdwn", text: $mrkdwn}}]}')
+          curl -s -X POST "https://slack.com/api/chat.postMessage" \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H 'Content-type: application/json; charset=utf-8' \
+            -d "$PAYLOAD"
