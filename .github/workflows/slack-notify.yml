@@ -16,6 +16,7 @@ jobs:
     steps:
       - name: Wait for Cursor Bugbot
         id: bugbot
+        continue-on-error: true
         uses: lewagon/wait-on-check-action@v1.3.4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
@@ -23,6 +24,7 @@ jobs:
           running-workflow-name: Slack PR Check Notification / notify
           check-regexp: 'Cursor Bugbot'
           allowed-conclusions: success,neutral,skipped,failure,timed_out,cancelled
+          wait-interval: 10
 
       - name: Get Bugbot conclusion
         id: conclusion
