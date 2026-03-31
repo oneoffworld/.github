@@ -7,45 +7,38 @@ on:
         required: true
 
 concurrency:
-  group: slack-notify-${{ github.event.pull_request.number }}
+  group: slack-notify-${{ github.event.check_run.pull_requests[0].number }}
   cancel-in-progress: true
 
 jobs:
   notify:
+    if: contains(github.event.check_run.name, 'CodeRabbit') && github.event.check_run.pull_requests[0]
     runs-on: ubuntu-latest
     steps:
-      - name: Wait for CodeRabbit
-        id: coderabbit
-        continue-on-error: true
-        uses: lewagon/wait-on-check-action@v1.3.4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          running-workflow-name: Slack PR Check Notification / notify
-          check-regexp: 'CodeRabbit'
-          allowed-conclusions: success,neutral,skipped,failure,timed_out,cancelled
-          wait-interval: 10
-
-      - name: Get CodeRabbit conclusion
-        id: conclusion
+      - name: Get PR details
+        id: pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.check_run.pull_requests[0].number }}
         run: |
-          CONCLUSION=$(gh api "repos/${{ github.repository }}/commits/${{ github.event.pull_request.head.sha }}/check-runs" \
-            --jq '[.check_runs[] | select(.name | test("CodeRabbit")) | .conclusion] | last // "unknown"')
-          echo "coderabbit=${CONCLUSION}" >> "$GITHUB_OUTPUT"
+          PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}")
+          echo "title=$(echo "$PR_DATA" | jq -r '.title')" >> "$GITHUB_OUTPUT"
+          echo "url=$(echo "$PR_DATA" | jq -r '.html_url')" >> "$GITHUB_OUTPUT"
+          echo "base=$(echo "$PR_DATA" | jq -r '.base.ref')" >> "$GITHUB_OUTPUT"
+          echo "head=$(echo "$PR_DATA" | jq -r '.head.ref')" >> "$GITHUB_OUTPUT"
+          echo "author=$(echo "$PR_DATA" | jq -r '.user.login')" >> "$GITHUB_OUTPUT"
 
       - name: Notify Slack
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_BASE: ${{ github.event.pull_request.base.ref }}
-          PR_HEAD: ${{ github.head_ref }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_TITLE: ${{ steps.pr.outputs.title }}
+          PR_NUMBER: ${{ github.event.check_run.pull_requests[0].number }}
+          PR_URL: ${{ steps.pr.outputs.url }}
+          PR_BASE: ${{ steps.pr.outputs.base }}
+          PR_HEAD: ${{ steps.pr.outputs.head }}
+          PR_AUTHOR: ${{ steps.pr.outputs.author }}
           REPO: ${{ github.repository }}
-          CODERABBIT_CONCLUSION: ${{ steps.conclusion.outputs.coderabbit }}
+          CODERABBIT_CONCLUSION: ${{ github.event.check_run.conclusion }}
         run: |
           case "$CODERABBIT_CONCLUSION" in
             success)   EMOJI="✅"; STATUS="passed" ;;
