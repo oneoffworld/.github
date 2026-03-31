@@ -7,47 +7,56 @@ on:
         required: true
 
 concurrency:
-  group: slack-notify-${{ github.event.check_run.pull_requests[0].number }}
+  group: slack-notify-${{ github.event.sha }}
   cancel-in-progress: true
 
 jobs:
   notify:
-    if: contains(github.event.check_run.name, 'CodeRabbit') && github.event.check_run.pull_requests[0]
+    if: github.event.context == 'CodeRabbit' && github.event.state != 'pending'
     runs-on: ubuntu-latest
     steps:
-      - name: Get PR details
+      - name: Find PR for commit
         id: pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.check_run.pull_requests[0].number }}
+          COMMIT_SHA: ${{ github.event.sha }}
         run: |
-          PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}")
-          echo "title=$(echo "$PR_DATA" | jq -r '.title')" >> "$GITHUB_OUTPUT"
+          PR_DATA=$(gh api "repos/${{ github.repository }}/commits/${COMMIT_SHA}/pulls" --jq '.[0]')
+          if [ -z "$PR_DATA" ] || [ "$PR_DATA" = "null" ]; then
+            echo "No PR found for commit ${COMMIT_SHA} — skipping"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          echo "number=$(echo "$PR_DATA" | jq -r '.number')" >> "$GITHUB_OUTPUT"
+          {
+            echo "title<<EOF"
+            echo "$PR_DATA" | jq -r '.title'
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
           echo "url=$(echo "$PR_DATA" | jq -r '.html_url')" >> "$GITHUB_OUTPUT"
           echo "base=$(echo "$PR_DATA" | jq -r '.base.ref')" >> "$GITHUB_OUTPUT"
           echo "head=$(echo "$PR_DATA" | jq -r '.head.ref')" >> "$GITHUB_OUTPUT"
           echo "author=$(echo "$PR_DATA" | jq -r '.user.login')" >> "$GITHUB_OUTPUT"
 
       - name: Notify Slack
+        if: steps.pr.outputs.found == 'true'
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           PR_TITLE: ${{ steps.pr.outputs.title }}
-          PR_NUMBER: ${{ github.event.check_run.pull_requests[0].number }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
           PR_URL: ${{ steps.pr.outputs.url }}
           PR_BASE: ${{ steps.pr.outputs.base }}
           PR_HEAD: ${{ steps.pr.outputs.head }}
           PR_AUTHOR: ${{ steps.pr.outputs.author }}
           REPO: ${{ github.repository }}
-          CODERABBIT_CONCLUSION: ${{ github.event.check_run.conclusion }}
+          CODERABBIT_STATE: ${{ github.event.state }}
         run: |
-          case "$CODERABBIT_CONCLUSION" in
-            success)   EMOJI="✅"; STATUS="passed" ;;
-            failure)   EMOJI="❌"; STATUS="failed" ;;
-            timed_out) EMOJI="⏰"; STATUS="timed out" ;;
-            cancelled) EMOJI="🚫"; STATUS="cancelled" ;;
-            neutral)   EMOJI="➖"; STATUS="neutral" ;;
-            skipped)   EMOJI="⏭️"; STATUS="skipped" ;;
-            *)         EMOJI="⚠️"; STATUS="$CODERABBIT_CONCLUSION" ;;
+          case "$CODERABBIT_STATE" in
+            success) EMOJI="✅"; STATUS="passed" ;;
+            failure) EMOJI="❌"; STATUS="failed" ;;
+            error)   EMOJI="⚠️"; STATUS="errored" ;;
+            *)       EMOJI="⚠️"; STATUS="$CODERABBIT_STATE" ;;
           esac
           case "$PR_AUTHOR" in
             adam-oneoff) SLACK_USER="U0AFK0X90ET" ;;
