@@ -29,7 +29,11 @@ jobs:
           fi
           echo "found=true" >> "$GITHUB_OUTPUT"
           echo "number=$(echo "$PR_DATA" | jq -r '.number')" >> "$GITHUB_OUTPUT"
-          echo "title=$(echo "$PR_DATA" | jq -r '.title')" >> "$GITHUB_OUTPUT"
+          {
+            echo "title<<EOF"
+            echo "$PR_DATA" | jq -r '.title'
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
           echo "url=$(echo "$PR_DATA" | jq -r '.html_url')" >> "$GITHUB_OUTPUT"
           echo "base=$(echo "$PR_DATA" | jq -r '.base.ref')" >> "$GITHUB_OUTPUT"
           echo "head=$(echo "$PR_DATA" | jq -r '.head.ref')" >> "$GITHUB_OUTPUT"
