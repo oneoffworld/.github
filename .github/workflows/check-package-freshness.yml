@@ -1,0 +1,74 @@
+name: Check package freshness
+
+# Reusable workflow: refuses to merge PRs that introduce npm package versions
+# published less than `min-age-days` ago on the npm registry.
+#
+# Usage in a consumer repo (.github/workflows/package-freshness.yml):
+#
+#   name: Package freshness
+#   on:
+#     pull_request:
+#       paths:
+#         - 'package-lock.json'
+#         - 'package.json'
+#         - '.github/workflows/package-freshness.yml'
+#   jobs:
+#     check:
+#       uses: oneoffworld/.github/.github/workflows/check-package-freshness.yml@main
+#       with:
+#         min-age-days: '7'
+#         # allow-fresh: 'react,react-dom'   # optional
+
+on:
+  workflow_call:
+    inputs:
+      min-age-days:
+        description: 'Minimum age (in days) for any resolved package version.'
+        type: string
+        required: false
+        default: '7'
+      allow-fresh:
+        description: 'Comma-separated package names exempt from the freshness check.'
+        type: string
+        required: false
+        default: ''
+      node-version:
+        description: 'Node.js version used to run the check.'
+        type: string
+        required: false
+        default: '20'
+      shared-ref:
+        description: 'Git ref of oneoffworld/.github to load the shared script from.'
+        type: string
+        required: false
+        default: 'main'
+      working-directory:
+        description: 'Directory containing package-lock.json (relative to repo root).'
+        type: string
+        required: false
+        default: '.'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout caller repo
+        uses: actions/checkout@v4
+
+      - name: Checkout shared scripts
+        uses: actions/checkout@v4
+        with:
+          repository: oneoffworld/.github
+          ref: ${{ inputs.shared-ref }}
+          path: .shared-org-github
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Check package freshness
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          MIN_AGE_DAYS: ${{ inputs.min-age-days }}
+          ALLOW_FRESH: ${{ inputs.allow-fresh }}
+        run: node "$GITHUB_WORKSPACE/.shared-org-github/scripts/check-package-freshness.mjs"
