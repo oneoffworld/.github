@@ -49,10 +49,13 @@ on:
 
 jobs:
   check:
-    uses: oneoffworld/.github/.github/workflows/check-package-freshness.yml@main
+    # Pin both the workflow `@<ref>` and `shared-ref` to the same commit SHA
+    # of oneoffworld/.github for supply-chain safety. Bump together.
+    uses: oneoffworld/.github/.github/workflows/check-package-freshness.yml@<commit-sha>
     with:
       min-age-days: '7'
-      # allow-fresh: 'react,react-dom'   # optional comma-separated exemptions
+      shared-ref: '<commit-sha>'        # required — same SHA as above
+      # allow-fresh: 'react,react-dom'  # optional comma-separated exemptions
 ```
 
 The shared script lives at `scripts/check-package-freshness.mjs` in this repo

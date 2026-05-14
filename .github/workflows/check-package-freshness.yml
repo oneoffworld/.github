@@ -14,9 +14,11 @@ name: Check package freshness
 #         - '.github/workflows/package-freshness.yml'
 #   jobs:
 #     check:
-#       uses: oneoffworld/.github/.github/workflows/check-package-freshness.yml@main
+#       # Pin to a commit SHA for both `@<ref>` and `shared-ref`.
+#       uses: oneoffworld/.github/.github/workflows/check-package-freshness.yml@<commit-sha>
 #       with:
 #         min-age-days: '7'
+#         shared-ref: '<commit-sha>'         # required — same SHA as above
 #         # allow-fresh: 'react,react-dom'   # optional
 
 on:
@@ -37,11 +39,15 @@ on:
         type: string
         required: false
         default: '20'
+      # Supply-chain note: this input controls which ref of oneoffworld/.github
+      # is checked out to source `scripts/check-package-freshness.mjs`. A
+      # moving branch like `main` means a compromise of this repo would
+      # immediately affect every consumer between workflow load and script
+      # checkout. Callers MUST pin to a commit SHA (preferred) or release tag.
       shared-ref:
-        description: 'Git ref of oneoffworld/.github to load the shared script from.'
+        description: 'Git ref (commit SHA or tag) of oneoffworld/.github to load the shared script from. Pin to a SHA — do not use a moving branch.'
         type: string
-        required: false
-        default: 'main'
+        required: true
       working-directory:
         description: 'Directory containing package-lock.json (relative to repo root).'
         type: string

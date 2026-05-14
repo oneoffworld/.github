@@ -35,7 +35,29 @@ const LOCKFILE = process.env.LOCKFILE
   ? resolve(process.env.LOCKFILE)
   : resolve(process.cwd(), 'package-lock.json');
 
-const MIN_AGE_DAYS = Number(process.env.MIN_AGE_DAYS ?? 7);
+/**
+ * Parse an env var as a number, falling back to `fallback` (and warning)
+ * if the value is missing/blank/invalid. `validate` decides what counts as
+ * acceptable (e.g., finite non-negative, finite positive integer).
+ */
+function parseNumericEnv(name, fallback, validate) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || !validate(parsed)) {
+    console.warn(
+      `WARN: ${name}=${JSON.stringify(raw)} is not valid; falling back to ${fallback}.`,
+    );
+    return fallback;
+  }
+  return parsed;
+}
+
+const MIN_AGE_DAYS = parseNumericEnv(
+  'MIN_AGE_DAYS',
+  7,
+  (n) => n >= 0,
+);
 const MIN_AGE_MS = MIN_AGE_DAYS * 24 * 60 * 60 * 1000;
 const ALLOW_FRESH = new Set(
   (process.env.ALLOW_FRESH ?? '')
@@ -44,7 +66,11 @@ const ALLOW_FRESH = new Set(
     .filter(Boolean),
 );
 const REGISTRY = process.env.NPM_REGISTRY ?? 'https://registry.npmjs.org';
-const CONCURRENCY = Number(process.env.FRESHNESS_CONCURRENCY ?? 16);
+const CONCURRENCY = parseNumericEnv(
+  'FRESHNESS_CONCURRENCY',
+  16,
+  (n) => Number.isInteger(n) && n > 0,
+);
 const FETCH_TIMEOUT_MS = 30_000;
 
 /**
@@ -73,7 +99,10 @@ const packumentCache = new Map();
 
 async function fetchPackument(name) {
   if (packumentCache.has(name)) return packumentCache.get(name);
-  const url = `${REGISTRY}/${name.replace('/', '%2F')}`;
+  // Replace every `/` so scoped names (`@scope/name`) — and any defensively
+  // handled multi-segment input — are URL-safe. Leaving `@` alone matches
+  // the npm registry's canonical form (`/@scope%2Fname`).
+  const url = `${REGISTRY}/${name.replaceAll('/', '%2F')}`;
   // Note: do NOT request the abbreviated `application/vnd.npm.install-v1+json`
   // format here — it omits the `time` field we need.
   const promise = (async () => {
@@ -164,8 +193,13 @@ async function main() {
   );
 
   if (errors.length) {
-    console.warn(`\n${errors.length} package(s) could not be checked:`);
-    for (const e of errors) console.warn(`  - ${e.name}@${e.version}: ${e.error}`);
+    console.error(`\n${errors.length} package(s) could not be checked:`);
+    for (const e of errors) console.error(`  - ${e.name}@${e.version}: ${e.error}`);
+    console.error(
+      `\nFAIL: registry fetches failed; refusing to pass freshness check ` +
+      `with incomplete data.`,
+    );
+    process.exit(1);
   }
 
   if (tooFresh.length) {
