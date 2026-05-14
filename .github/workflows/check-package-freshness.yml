@@ -3,6 +3,16 @@ name: Check package freshness
 # Reusable workflow: refuses to merge PRs that introduce npm package versions
 # published less than `min-age-days` ago on the npm registry.
 #
+# Trust model
+# -----------
+# - First-party GitHub-published actions (`actions/checkout`, `actions/setup-node`)
+#   are pinned by major tag (`@v4`). These are treated as a trusted base layer:
+#   GitHub maintains them, signs releases, and a compromise there is out of scope
+#   for this control.
+# - Anything in `oneoffworld/.github` (this repo) MUST be pinned to a commit SHA
+#   by callers — see the `shared-ref` input below. Compromise of this repo
+#   would otherwise propagate to every consumer instantly.
+#
 # Usage in a consumer repo (.github/workflows/package-freshness.yml):
 #
 #   name: Package freshness
