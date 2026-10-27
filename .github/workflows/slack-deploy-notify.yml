@@ -23,8 +23,11 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           REPO: ${{ github.repository }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
-          if [ "$REPO" = "oneoffworld/oneoff-api" ] && [ "${{ github.event.pull_request.base.ref }}" = "staging" ]; then
+          # A merge into staging deploys staging, whatever the default branch (oow-sm-web's is staging since ONE-1907;
+          # its prod promotes post from its own promote-to-prod workflow).
+          if [ "$BASE_REF" = "staging" ]; then
             TEXT="🚀 ${PR_AUTHOR} deploying \`${REPO}\` to staging"
           else
             TEXT="🚀 ${PR_AUTHOR} deploying \`${REPO}\` to prod"
