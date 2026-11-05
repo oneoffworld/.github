@@ -1,0 +1,75 @@
+name: Slack PR Review Post
+
+# Posts a review request to Slack when a listed author opens a PR, reopens one,
+# or marks a draft ready for review. Drafts are skipped until they are ready.
+#
+# Caller:
+#   on:
+#     pull_request:
+#       types: [opened, reopened, ready_for_review]
+#   jobs:
+#     slack-pr-review-post:
+#       uses: oneoffworld/.github/.github/workflows/slack-pr-review-post.yml@main
+#       with:
+#         authors: adam-oneoff
+#       secrets:
+#         SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+on:
+  workflow_call:
+    inputs:
+      authors:
+        description: Comma-separated GitHub logins whose PRs are posted
+        required: true
+        type: string
+      channel:
+        description: Slack channel id (default #engineering_with_bots)
+        required: false
+        type: string
+        default: C0CCSDGTD9A
+    secrets:
+      SLACK_BOT_TOKEN:
+        required: true
+
+jobs:
+  pr-review-post:
+    if: >-
+      contains(fromJSON('["opened", "reopened", "ready_for_review"]'), github.event.action) &&
+      !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Slack
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          AUTHORS: ${{ inputs.authors }}
+          CHANNEL: ${{ inputs.channel }}
+          REPO: ${{ github.repository }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_ADDITIONS: ${{ github.event.pull_request.additions }}
+          PR_DELETIONS: ${{ github.event.pull_request.deletions }}
+          PR_FILES: ${{ github.event.pull_request.changed_files }}
+        run: |
+          if [[ ",$(tr -d '[:space:]' <<< "$AUTHORS")," != *",${PR_AUTHOR},"* ]]; then
+            echo "${PR_AUTHOR} is not in authors; nothing to post."
+            exit 0
+          fi
+          TEXT="🔍 Review please: ${PR_AUTHOR}'s PR #${PR_NUMBER} on \`${REPO}\` → \`${PR_BASE}\`"
+          MRKDWN=$(printf '%s\n<%s|#%s — %s>\n+%s −%s across %s files' \
+            "$TEXT" "$PR_URL" "$PR_NUMBER" "$PR_TITLE" "$PR_ADDITIONS" "$PR_DELETIONS" "$PR_FILES")
+          PAYLOAD=$(jq -n \
+            --arg channel "$CHANNEL" \
+            --arg text "$TEXT" \
+            --arg mrkdwn "$MRKDWN" \
+            '{channel: $channel, text: $text, unfurl_links: false, blocks: [{type: "section", text: {type: "mrkdwn", text: $mrkdwn}}]}')
+          RESPONSE=$(curl -s -X POST "https://slack.com/api/chat.postMessage" \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H 'Content-type: application/json; charset=utf-8' \
+            -d "$PAYLOAD")
+          if [[ "$(jq -r .ok <<< "$RESPONSE")" != "true" ]]; then
+            echo "::error::Slack post failed: $(jq -r .error <<< "$RESPONSE")"
+            exit 1
+          fi
